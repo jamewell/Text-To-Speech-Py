@@ -3,6 +3,8 @@
 *.log
 .env
 .vscode/
+.idea
+.venv
 
 # Backend
 __pycache__/
