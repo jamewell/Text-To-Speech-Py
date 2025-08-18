@@ -1,0 +1,13 @@
+# General
+.DS_Store
+*.log
+.env
+.vscode/
+
+# Backend
+__pycache__/
+*.pyc
+
+# Frontend
+node_modules/
+.svelte-kit/
