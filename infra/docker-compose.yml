@@ -13,7 +13,11 @@ services:
       - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
 
   frontend:
-    build: ../frontend
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    volumes:
+      - ../frontend:/app
     ports:
       - "${FRONTEND_PORT}:5173"
 
