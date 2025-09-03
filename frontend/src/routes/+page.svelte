@@ -49,7 +49,7 @@
             <div class="mb-4">
                 <button
                     onclick={() => goto('/upload')}
-                    class="btn-primary text-lg px-8 py-3"
+                    class="btn-primary text-lg px-8 py-3 mb-4"
                 >
                     Start Converting
                     <span class="ml-2">🚀</span>
