@@ -1,0 +1,85 @@
+<script lang="ts">
+	import '../app.css';
+	import favicon from '$lib/assets/favicon.svg';
+	import { page } from '$app/state';
+	import { goto } from '$app/navigation';
+
+	const navItems = [
+		{ href: '/', label: 'Home', icon: '🏠'},
+		{ href: '/upload', label: 'Upload', icon: '📤'},
+		{ href: '/dashboard', label: 'DashBoard', icon: '📊'},
+		{ href: '/auth', label: 'Account', icon: '👤'}
+	];
+
+	function isActive(href: string): boolean {
+		if (href === '/') {
+			return $page.url.pathname === '/';
+		}
+		return $page.url.pathname.startsWith(href);
+	}
+	
+</script>
+
+<div class="min-h-screen bg-gray-50">
+	<nav class="bg-white shadow-sm border-b border-gray-200">
+		<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+			<div class="flex justify-between h-16">
+				<!-- Logo/Brand -->
+				<div class="flex items-center">
+					<button
+						on:click={() => goto('/')}
+						class="flex items-center space-x-2 text-xl font-bold text-gray-900 hover:text-blue-600 transition-colors"
+					>
+						<span class="text-2xl">🎙️</span>
+						<span>TTS Studio</span>
+					</button>
+				</div>
+
+				<!-- Nav Links -->
+				<div class="hidden md:flex items-center space-x-1">
+					{#each navItems as item}
+						<a 
+							href="{item.href}"
+							class="nav-link"
+						>
+							<span class="mr-2">{item.icon}</span>
+							{item.label}
+						</a>
+					{/each}
+				</div>
+
+				<!-- mobile menu button -->
+				<div class="md:hidden flex items-center">
+					<button 
+						class="text-gray-600 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-md p-2"
+						aria-label="Toggle menu"
+					>
+						<svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+						</svg>
+					</button>
+				</div>
+			</div>
+		</div>
+	</nav>
+
+	<!-- Main Content -->
+	<main class="flex-1">
+		<slot />
+	</main>
+
+	<!-- Footer -->
+	 <footer class="bg-white border-t border-gray-200 mt-auto">
+		<div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+			<div class="flex justify between items-center text-sm text-gray-600">
+				<p>&copy; 2025 TTS Studio.</p>
+				<div class="flex space-x-4">
+					<a href="#" class="hover:text-gray-900">Privacy</a>
+					<a href="#" class="hover:text-gray-900">Terms</a>
+					<a href="#" class="hover:text-gray-900">Support</a>
+				</div>
+			</div>
+		</div>
+	 </footer>
+
+</div>
