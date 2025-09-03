@@ -11,6 +11,7 @@
 - infra: add .env template for environment variables
 - refactor: migrate hardcoded values to .env variables
 - chore: exclude .env from version control
+- frontend: added home page and account, dashboard, and upload pages with placeholder content 
 
 
 ### Fixed
