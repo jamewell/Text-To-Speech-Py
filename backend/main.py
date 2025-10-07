@@ -12,6 +12,23 @@ async def lifespan(app: FastAPI):
     print(f"📊 Environment: {settings.ENVIRONMENT}")
     print(f"🔧 Debug mode: {settings.DEBUG}")
 
+    print("🔌 Checking database connection...")
+    try:
+        from core.database import check_database_connection, create_tables
+
+        connection_ok = await check_database_connection()
+        if not connection_ok:
+            print("❌ Database connection failed - exiting")
+            raise Exception("Database connection failed")
+
+        print("🗄️ Initializing database tables...")
+        await create_tables()
+
+    except Exception as e:
+        print(f"❌ Database initialization failed: {e}")
+        print("💡 Make sure PostgreSQL is running and credentials are correct")
+        raise
+
     yield
 
     print("🛑 Shutting down application...")
