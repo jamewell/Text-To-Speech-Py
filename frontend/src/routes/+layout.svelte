@@ -1,8 +1,8 @@
 <script lang="ts">
 	import '../app.css';
-	import favicon from '$lib/assets/favicon.svg';
-	import { page } from '$app/state';
+	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
+	import { authStore } from '../stores/auth';
 
 	const navItems = [
 		{ href: '/', label: 'Home', icon: '🏠'},
@@ -16,6 +16,16 @@
 			return $page.url.pathname === '/';
 		}
 		return $page.url.pathname.startsWith(href);
+	}
+
+	let mobileMenuOpen = false;
+
+	function toggleMobileMenu() {
+		mobileMenuOpen = !mobileMenuOpen;
+	}
+
+	function closeMobileMenu() {
+		mobileMenuOpen = false;
 	}
 	
 </script>
@@ -35,7 +45,7 @@
 					</button>
 				</div>
 
-				<!-- Nav Links -->
+				<!-- Nav Links Desktop -->
 				<div class="hidden md:flex items-center space-x-1">
 					{#each navItems as item}
 						<a 
@@ -46,6 +56,25 @@
 							{item.label}
 						</a>
 					{/each}
+
+					<!-- Auth Navigation -->
+					{#if $authStore.isAuthenticated && $authStore.user}
+						<a
+							href="/profile" 
+							class="nav-link {isActive('/profile') ? 'nav-link-active' : ''}"
+						>
+							<span class="mr-2">👤</span>
+							Profile
+						</a>
+					{:else}
+						<a 
+							href="/login"
+							class="nav-link"
+						>
+							<span class="mr-2">🔐</span>
+							Login
+						</a>
+					{/if}
 				</div>
 
 				<!-- mobile menu button -->
