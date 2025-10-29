@@ -2,20 +2,13 @@ import { writable } from "svelte/store";
 import { goto } from "$app/navigation";
 import {api, type ApiError} from '$lib/api';
 import { browser } from "$app/environment";
-
-export interface User {
-    id: string;
-    email: string;
-    created_at: string;
-    is_active: boolean;
-}
+import type { User } from "$lib/schemas/api";
 
 export interface AuthState {
     user: User | null;
     isAuthenticated: boolean;
     isLoading: boolean;
     error: string | null;
-    token: string | null;
 }
 
 const initialState: AuthState = {
@@ -23,7 +16,6 @@ const initialState: AuthState = {
     isAuthenticated: false,
     isLoading: false,
     error: null,
-    token: null,
 };
 
 function createAuthStore() {
@@ -32,9 +24,8 @@ function createAuthStore() {
     // Load user from localStorage on inintialization
     if (browser) {
         const storedUser = localStorage.getItem('user');
-        const storedToken = localStorage.getItem('token');
 
-        if (storedUser && storedToken) {
+        if (storedUser) {
             try {
                 const user = JSON.parse(storedUser);
                 set({
@@ -42,20 +33,17 @@ function createAuthStore() {
                     isAuthenticated: true,
                     isLoading: false,
                     error: null,
-                    token: storedToken,
                 });
             } catch (error) {
                 // Invalid stored data, clear it
                 localStorage.removeItem('user');
-                localStorage.removeItem('token');
             }
         }
     }
 
-    function setAuthenticatedUser(user: User, token: string = 'session'): void {
+    function setAuthenticatedUser(user: User): void {
         if (browser) {
             localStorage.setItem('user', JSON.stringify(user));
-            localStorage.setItem('token', token)
         }
 
         set({
@@ -63,14 +51,12 @@ function createAuthStore() {
             isAuthenticated: true,
             isLoading: false,
             error: null,
-            token,
         });
     }
 
     function clearAuthState(): void {
         if (browser) {
 			localStorage.removeItem('user');
-			localStorage.removeItem('token');
 		}
 
 		set(initialState);
@@ -86,9 +72,8 @@ function createAuthStore() {
                 const response: any = await api.register(email, password);
 
                 const user = response.user;
-                const token = response.token || 'session';
 
-                setAuthenticatedUser(user, token)
+                setAuthenticatedUser(user);
 
                 await goto('/dashboard');
                 return true;
@@ -110,9 +95,8 @@ function createAuthStore() {
                 const response: any = await api.login(email, password);
 
                 const user = response.user;
-                const token = response.token || 'session';
 
-                setAuthenticatedUser(user, token)
+                setAuthenticatedUser(user);
 
                 await goto('/dashboard');
                 return true;
@@ -142,8 +126,7 @@ function createAuthStore() {
             update(state => ({ ...state, isLoading: true, error: null}));
 
             try {
-                const response: any = await api.getCurrentUser();
-                const user = response;
+                const user = await api.getCurrentUser();
 
                 if (browser) {
                     localStorage.setItem('user', JSON.stringify(user));
@@ -158,6 +141,11 @@ function createAuthStore() {
                 }))
             } catch (error) {
                 clearAuthState();
+
+                const apiError = error as ApiError;
+                if(apiError.isAuthError) {
+                    await goto('/login');
+                }
             }
         },
 

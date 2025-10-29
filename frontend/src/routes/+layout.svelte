@@ -1,8 +1,11 @@
 <script lang="ts">
 	import '../app.css';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { authStore } from '../stores/auth';
+	import { isOnline } from '../lib/stores/network';
+	import { onMount } from 'svelte';
+	import { validateSession } from '$lib/guards/auth';
 
 	const navItems = [
 		{ href: '/', label: 'Home', icon: '🏠'},
@@ -12,12 +15,13 @@
 
 	function isActive(href: string): boolean {
 		if (href === '/') {
-			return $page.url.pathname === '/';
+			return page.url.pathname === '/';
 		}
-		return $page.url.pathname.startsWith(href);
+		return page.url.pathname.startsWith(href);
 	}
 
 	let mobileMenuOpen = false;
+	let sessionValidated = false;
 
 	function toggleMobileMenu() {
 		mobileMenuOpen = !mobileMenuOpen;
@@ -27,9 +31,21 @@
 		mobileMenuOpen = false;
 	}
 	
+	onMount(async () => {
+		await validateSession();
+		sessionValidated = true;
+	});
+
 </script>
 
 <div class="min-h-screen bg-gray-50">
+	<!-- Offline banner -->
+	{#if !$isOnline}
+		<div class="bg-yellow-500 text-white px-4 py-2 text-center text-sm font-medium">
+			⚠️ You're offline. Some features may not be available.
+		</div>
+	{/if}
+
 	<nav class="bg-white shadow-sm border-b border-gray-200">
 		<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 			<div class="flex justify-between h-16">
@@ -79,6 +95,7 @@
 				<!-- mobile menu button -->
 				<div class="md:hidden flex items-center">
 					<button 
+						on:click={toggleMobileMenu}
 						class="text-gray-600 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-md p-2"
 						aria-label="Toggle menu"
 					>

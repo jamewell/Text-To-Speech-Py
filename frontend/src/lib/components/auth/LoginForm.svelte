@@ -59,7 +59,7 @@
         const isValidEmail = validateEmail(email);
         const isValidPassword = validatePassword(password);
 
-        if (!isValidEmail || isValidPassword) {
+        if (!isValidEmail || !isValidPassword) {
             return;
         }
 
