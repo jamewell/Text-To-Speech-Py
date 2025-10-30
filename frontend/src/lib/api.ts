@@ -129,7 +129,7 @@ export class ApiClient {
                 return {} as T;
             }
 
-            const data = await response.json;
+            const data = await response.json();
 
             if (schema) {
                 try {
