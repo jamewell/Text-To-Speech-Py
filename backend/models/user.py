@@ -3,6 +3,8 @@ from datetime import timezone
 
 from sqlalchemy import Column, Integer, String, TIMESTAMP, Boolean
 from core.database import Base
+from sqlalchemy.orm import relationship
+
 
 class User(Base):
     __tablename__ = "users"
@@ -16,6 +18,8 @@ class User(Base):
         nullable=False
     )
     is_active = Column(Boolean, default=True, nullable=False)
+
+    files = relationship("File", back_populates="user", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<User(id={self.id}, email={self.email}, is_active={self.is_active}"

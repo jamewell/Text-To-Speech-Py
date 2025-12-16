@@ -1,41 +1,60 @@
+import logging
+
+from celery.signals import setup_logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from core.config import settings
+from core.logging_config import setup_logging
 from api.v1.api import api_router
 
+setup_logging()
+
+logger = logging.getLogger(__name__)
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
-    print(f"🚀 Starting {settings.PROJECT_NAME} v{settings.VERSION}")
-    print(f"📊 Environment: {settings.ENVIRONMENT}")
-    print(f"🔧 Debug mode: {settings.DEBUG}")
+async def lifespan(application: FastAPI):
+    logger.info(
+        "Application startup initiated",
+        extra={
+            "project_name": settings.PROJECT_NAME,
+            "version": settings.VERSION,
+            "environment": settings.ENVIRONMENT,
+            "debug": settings.DEBUG
+        }
+    )
 
-    print("🔌 Checking database connection...")
+    logger.info("Checking database connection...")
     try:
         from core.database import check_database_connection, create_tables
 
         connection_ok = await check_database_connection()
         if not connection_ok:
-            print("❌ Database connection failed - exiting")
+            logger.error("Database connection failed - exiting")
             raise Exception("Database connection failed")
 
-        print("🗄️ Initializing database tables...")
+        logger.info("🗄️ Initializing database tables...")
         await create_tables()
 
     except Exception as e:
-        print(f"❌ Database initialization failed: {e}")
-        print("💡 Make sure PostgreSQL is running and credentials are correct")
+        logger.error(
+            "Database initialization failed",
+            extra={"error": str(e)},
+            exc_info=True
+        )
+        logger.info("Make sure PostgreSQL is running and credentials are correct")
         raise
+
+    logger.info("Application startup complete")
 
     yield
 
-    print("🛑 Shutting down application...")
+    logger.info("🛑 Shutting down application...")
 
 
 def create_application() -> FastAPI:
-    app = FastAPI(
+    application = FastAPI(
         title=settings.PROJECT_NAME,
         description="FastAPI backend for TTS web application with async processing",
         version=settings.VERSION,
@@ -45,7 +64,7 @@ def create_application() -> FastAPI:
         lifespan=lifespan
     )
 
-    app.add_middleware(
+    application.add_middleware(
         CORSMiddleware,
         allow_origins=settings.ALLOWED_HOSTS,
         allow_credentials=True,
@@ -53,9 +72,17 @@ def create_application() -> FastAPI:
         allow_headers=["*"],
     )
 
-    app.include_router(api_router, prefix=settings.API_V1_STR)
+    application.include_router(api_router, prefix=settings.API_V1_STR)
 
-    return app
+    logger.info(
+        "FastAPI application created",
+        extra={
+            "allowed_hosts": settings.ALLOWED_HOSTS,
+            "api_prefix": settings.API_V1_STR
+        }
+    )
+
+    return application
 
 
 app = create_application()
