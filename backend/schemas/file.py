@@ -12,7 +12,7 @@ class FileUploadResponse(BaseModel):
     file_size: int = Field(..., description="File size in bytes")
     mime_type: str = Field(..., description="MIME type of the file")
     status: str = Field(..., description="Current processing status")
-    uploaded_date: datetime = Field(..., description="Uploaded timestamp")
+    upload_date: datetime = Field(..., description="Uploaded timestamp")
 
     model_config = {
         "from_attributes": True,
@@ -24,7 +24,7 @@ class FileUploadResponse(BaseModel):
                 "file_size": 1048576,
                 "mime_type": "application/pdf",
                 "status": "pending",
-                "uploaded_date": "2025-10-31T12:00:00Z",
+                "upload_date": "2025-10-31T12:00:00Z",
             }
         }
     }

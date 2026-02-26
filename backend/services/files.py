@@ -74,26 +74,20 @@ class FileService:
                 f"Invalid file type, Allowed: {', '.join(ALLOWED_MIME_TYPES)}"
             )
 
-        file_size = None
-        if hasattr(file, 'size') and file.size:
-            file_size = file.size
-        elif hasattr(file, 'headers'):
-            content_length = file.headers.get('content-length')
-            if  content_length:
-                file_size = int(content_length)
-
-        if file_size and file_size > MAX_FILE_SIZE:
+        if file.content_type not in ALLOWED_MIME_TYPES:
             logger.warning(
-                "File validation failed: file too large",
+                "File validation failed: invalid mime type",
                 extra={
                     "original_filename": file.filename,
-                    "file_size": file_size,
-                    "max_size": MAX_FILE_SIZE
+                    "content_type": file.content_type,
+                    "allowed_types": list(ALLOWED_MIME_TYPES)
                 }
             )
-            raise  FileValidationError(
-                f"File too large. Maximum size: {MAX_FILE_SIZE / (1024 * 1024):.0f}MB"
+            raise FileValidationError(
+                f"Invalid MIME type, Allowed: {', '.join(ALLOWED_MIME_TYPES)}"
             )
+
+        file_size = getattr(file, "size", None)
 
         validation_duration = time.time() - validation_start
 
@@ -148,7 +142,7 @@ class FileService:
             file: UploadFile,
             user_id: int,
             stored_filename: str
-    )-> str:
+    )-> tuple[str, int]:
         """
         Save uploaded file to MinIO storage.
 
@@ -181,8 +175,26 @@ class FileService:
         minio_client = get_minio_client()
 
         try:
-            file_content = await file.read()
-            file_size = len(file_content)
+            await file.seek(0)
+            chunks: list[bytes] = []
+            file_size = 0
+            chunk_size = 1024 * 1024
+
+            while True:
+                chunk = await file.read(chunk_size)
+                if not chunk:
+                    break
+                file_size += len(chunk)
+                if file_size > MAX_FILE_SIZE:
+                    raise FileValidationError(
+                        f"File too large. Maximum size: {MAX_FILE_SIZE / (1024 * 1024):.0f}MB"
+                    )
+                chunks.append(chunk)
+
+            if file_size == 0:
+                raise FileValidationError("File is empty")
+
+            file_content = b"".join(chunks)
 
             logger.debug(
                 "File content read",
@@ -216,7 +228,7 @@ class FileService:
 
             await file.seek(0)
 
-            return stored_filename
+            return stored_filename, file_size
 
         except S3Error as e:
             logger.error(
@@ -377,7 +389,24 @@ class FileService:
                 exc_info=True
             )
 
-            return None
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to validate duplicate file"
+            )
+
+    @staticmethod
+    async def delete_uploaded_file(stored_filename: str) -> None:
+        minio_client = get_minio_client()
+        try:
+            await minio_client.delete_file(
+                bucket_name=RAW_PDF_BUCKET,
+                object_name=stored_filename,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to cleanup uploaded object after database failure",
+                extra={"stored_filename": stored_filename, "bucket": RAW_PDF_BUCKET}
+            )
 
     @staticmethod
     async def get_user_files(

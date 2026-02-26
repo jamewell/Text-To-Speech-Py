@@ -5,12 +5,15 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.requests import Request
 from starlette import status
 
 from core.database import get_db_session
+from core.session import get_session_token, sessions
 from models import User
 from models.file import File as FileModel
 from schemas.file import FileUploadResponse, FileListResponse, FileOut, FileDeleteResponse
+from services.auth import AuthService
 from services.files import FileService, FileValidationError
 
 logger = logging.getLogger(__name__)
@@ -18,40 +21,32 @@ router = APIRouter()
 
 
 async def get_current_user_dependency(
+        request: Request,
         db: AsyncSession = Depends(get_db_session)
 ) -> User:
-    """
-    Dependency to get current authenticated user.
+    session_token = get_session_token(request)
 
-    This is a placeholder that should be replaced with proper authentication.
-    For now, it returns a mock user for development.
-
-    Args:
-        db: Database session
-
-    Returns:
-        User: Current authenticated user
-
-    Raises:
-        HTTPException: If user is not authenticated
-    """
-    # TODO: Replace with actual authentication logic
-    # For now, return first user or create a test user
-
-    result = await db.execute(select(User).limit(1))
-    user = result.scalar_one_or_none()
-
-    if not user:
+    if not session_token or session_token not in sessions:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not Authorized"
+            detail="Not authenticated"
+        )
+
+    session_data = sessions[session_token]
+    user_id = session_data.get("user_id")
+    user = await AuthService.get_current_user_from_session(db, user_id)
+    if not user:
+        del sessions[session_token]
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found or inactive"
         )
 
     return user
 
 
 @router.post(
-    "/upload",
+    "/upload_file",
     response_model=FileUploadResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Upload a PDF file",
@@ -182,24 +177,24 @@ async  def upload_file(
             file.filename
         )
 
-        await FileService.save_uploaded_file(
+        _, actual_file_size = await FileService.save_uploaded_file(
             file=file,
             user_id=current_user.id,
             stored_filename=stored_filename
         )
 
-        await file.seek(0)
-        file_content = await file.read()
-        actual_file_size = len(file_content)
-
-        file_record = await FileService.create_file_record(
-            db=db,
-            user_id=current_user.id,
-            original_filename=file.filename,
-            stored_filename=stored_filename,
-            file_size=actual_file_size,
-            mime_type=file.content_type
-        )
+        try:
+            file_record = await FileService.create_file_record(
+                db=db,
+                user_id=current_user.id,
+                original_filename=file.filename,
+                stored_filename=stored_filename,
+                file_size=actual_file_size,
+                mime_type=file.content_type
+            )
+        except Exception:
+            await FileService.delete_uploaded_file(stored_filename)
+            raise
 
         if not file_record:
             raise HTTPException(
@@ -313,7 +308,7 @@ async def list_files(
         result = await db.execute(
             select(func.count()).select_from(FileModel).where(and_(FileModel.user_id == current_user.id))
         )
-        total = result.scalars() or 0
+        total = result.scalar_one()
 
         return FileListResponse(
             files=[FileOut.model_validate(f) for f in files],
@@ -431,4 +426,3 @@ async def delete_file(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to delete file"
         )
-
