@@ -187,6 +187,35 @@ async def test_upload_cleans_up_object_when_db_create_fails(
 
 
 @pytest.mark.asyncio
+async def test_upload_succeeds_when_pdf_parsing_fails(
+    client,
+    async_session_factory: async_sessionmaker[AsyncSession],
+    session_store: dict,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_minio = FakeMinioClient()
+    monkeypatch.setattr("services.files.get_minio_client", lambda: fake_minio)
+    monkeypatch.setattr(
+        "api.v1.endpoints.files.PdfParsingService.parse_and_store",
+        AsyncMock(side_effect=RuntimeError("parser failed")),
+    )
+
+    user = await create_user(async_session_factory, email="parsefail@example.com")
+    authenticate_client(client, session_store, user)
+
+    response = client.post(
+        "/files/upload_file",
+        files={"file": ("doc.pdf", b"%PDF-1.4 content", "application/pdf")},
+    )
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["original_filename"] == "doc.pdf"
+    assert payload["status"] == "pending"
+    assert fake_minio.uploaded
+
+
+@pytest.mark.asyncio
 async def test_list_endpoint_returns_integer_total(
     client,
     async_session_factory: async_sessionmaker[AsyncSession],

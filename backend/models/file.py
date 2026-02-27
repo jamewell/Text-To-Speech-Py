@@ -51,6 +51,8 @@ class File(Base):
         index=True
     )
     error_message = Column(String(500), nullable=True)
+    parsed_title = Column(String(255), nullable=True)
+    parsed_author = Column(String(255), nullable=True)
 
     upload_date = Column(
         TIMESTAMP(timezone=True),
@@ -61,6 +63,7 @@ class File(Base):
     processed_date = Column(TIMESTAMP(timezone=True), nullable=True)
 
     user = relationship("User", back_populates="files")
+    chapters = relationship("Chapter", back_populates="file", cascade="all, delete-orphan")
 
     def __repr__(self):
         return (
@@ -79,6 +82,8 @@ class File(Base):
             "bucket_name": self.bucket_name,
             "status": self.status,
             "error_message": self.error_message,
-            "uploaded_date": self.upload_date,
+            "parsed_title": self.parsed_title,
+            "parsed_author": self.parsed_author,
+            "upload_date": self.upload_date,
             "processed_date": self.processed_date
         }

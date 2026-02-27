@@ -15,6 +15,7 @@ from models.file import File as FileModel
 from schemas.file import FileUploadResponse, FileListResponse, FileOut, FileDeleteResponse
 from services.auth import AuthService
 from services.files import FileService, FileValidationError
+from services.pdf_parser import PdfParsingService
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -200,6 +201,28 @@ async  def upload_file(
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to create file record"
+            )
+
+        # Best effort parsing: malformed PDFs should not fail upload.
+        try:
+            await file.seek(0)
+            pdf_content = await file.read()
+            if pdf_content:
+                await PdfParsingService.parse_and_store(
+                    db=db,
+                    file_record=file_record,
+                    pdf_bytes=pdf_content,
+                )
+            await file.seek(0)
+        except Exception as parse_exc:
+            logger.warning(
+                "PDF parsing skipped after upload",
+                extra={
+                    "file_id": file_record.id,
+                    "user_id": current_user.id,
+                    "error": str(parse_exc),
+                    "correlation_id": correlation_id,
+                },
             )
 
         request_duration = time.time() - request_start
