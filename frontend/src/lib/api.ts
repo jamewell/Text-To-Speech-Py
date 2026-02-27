@@ -273,7 +273,37 @@ export class ApiClient {
         );
     }
 
-    async uploadFile(file: File, onProgress?: (progress: number) => void): Promise<FileUploadResponse> {
+    async uploadFile(
+        file: File,
+        onProgress?: (progress: number) => void,
+        attempt: number = 1
+    ): Promise<FileUploadResponse> {
+        try {
+            return await this.uploadFileOnce(file, onProgress);
+        } catch (error) {
+            const apiError = (error as ApiError).status !== undefined
+                ? (error as ApiError)
+                : {
+                    message: 'Network error. Please check your connection.',
+                    status: HTTP_STATUS_NETWORK_ERROR,
+                    isNetworkError: true,
+                } as ApiError;
+
+            if (this.shouldRetry(apiError, attempt)) {
+                if (onProgress) {
+                    onProgress(0);
+                }
+                await new Promise(resolve =>
+                    setTimeout(resolve, this.retryDelay * attempt)
+                );
+                return this.uploadFile(file, onProgress, attempt + 1);
+            }
+
+            throw apiError;
+        }
+    }
+
+    private async uploadFileOnce(file: File, onProgress?: (progress: number) => void): Promise<FileUploadResponse> {
         const { FileUploadResponseSchema } = await import('./schemas/api');
         const formData = new FormData();
 

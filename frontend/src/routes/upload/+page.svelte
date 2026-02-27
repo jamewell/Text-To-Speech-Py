@@ -144,6 +144,10 @@
             selectedFile = null;
         } catch (error) {
             const apiError = error as ApiError;
+            if (apiError.isAuthError) {
+                goto('/login');
+                return;
+            }
             uploadError = apiError.message || 'Upload failed. Please try again.';
         } finally {
             isUploading = false;
