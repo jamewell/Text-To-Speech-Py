@@ -33,3 +33,15 @@ export const ErrorResponseSchema = z.object({
     detail: z.string(),
     status_code: z.number().optional(),
 });
+
+export const FileUploadResponseSchema = z.object({
+    id: z.number(),
+    original_filename: z.string(),
+    stored_filename: z.string(),
+    file_size: z.number(),
+    mime_type: z.string(),
+    status: z.string(),
+    upload_date: z.iso.datetime(),
+});
+
+export type FileUploadResponse = z.infer<typeof FileUploadResponseSchema>;

@@ -1,5 +1,6 @@
 import { config } from "./config";
-import { json, z } from "zod";
+import { z } from "zod";
+import type { FileUploadResponse } from "./schemas/api";
 
 const HTTP_STATUS_NO_CONTENT = 204;
 const HTTP_STATUS_NETWORK_ERROR = 0;
@@ -100,12 +101,24 @@ export class ApiClient {
         attempt: number = 1
     ): Promise<T> {
         const url = `${this.baseUrl}${endpoint}`;
+        const isFormDataBody = options.body instanceof FormData;
+        const headers: Record<string, string> = {};
 
-        // Set default headers
-        const headers: HeadersInit = {
-            'Content-Type': 'application/json',
-            ...options.headers,
-        };
+        if (options.headers instanceof Headers) {
+            options.headers.forEach((value, key) => {
+                headers[key] = value;
+            });
+        } else if (Array.isArray(options.headers)) {
+            for (const [key, value] of options.headers) {
+                headers[key] = value;
+            }
+        } else if (options.headers) {
+            Object.assign(headers, options.headers);
+        }
+
+        if (!isFormDataBody && !headers['Content-Type']) {
+            headers['Content-Type'] = 'application/json';
+        }
 
         try {
             const response = await this.fetchWithTimeout(url, {
@@ -258,6 +271,86 @@ export class ApiClient {
             },
             RefreshTokenResponseSchema
         );
+    }
+
+    async uploadFile(file: File, onProgress?: (progress: number) => void): Promise<FileUploadResponse> {
+        const { FileUploadResponseSchema } = await import('./schemas/api');
+        const formData = new FormData();
+
+        formData.append('file', file);
+        const url = `${this.baseUrl}/files/upload_file`;
+
+        return new Promise<FileUploadResponse>((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', url);
+            xhr.withCredentials = true;
+            xhr.timeout = this.timeout;
+
+            xhr.upload.onprogress = (event) => {
+                if (onProgress && event.lengthComputable) {
+                    const progress = Math.round((event.loaded / event.total) * 100);
+                    onProgress(progress);
+                }
+            };
+
+            xhr.onload = () => {
+                const rawResponse = xhr.responseText;
+                let data: Record<string, unknown> = {};
+
+                if (rawResponse) {
+                    try {
+                        data = JSON.parse(rawResponse) as Record<string, unknown>;
+                    } catch {
+                        data = {};
+                    }
+                }
+
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    try {
+                        resolve(FileUploadResponseSchema.parse(data));
+                    } catch (error) {
+                        if (error instanceof z.ZodError) {
+                            reject({
+                                message: 'Invalid response from server. Please try again or contact support.',
+                                detail: `Validation failed: ${error.message}`,
+                                status: xhr.status,
+                                isValidationError: true,
+                            } as ApiError);
+                            return;
+                        }
+
+                        reject(error);
+                    }
+                    return;
+                }
+
+                const detail = typeof data.detail === 'string' ? data.detail : undefined;
+                reject({
+                    message: detail || xhr.statusText || 'An error occurred',
+                    detail,
+                    status: xhr.status,
+                    isAuthError: xhr.status === HTTP_STATUS_UNAUTHORIZED,
+                } as ApiError);
+            };
+
+            xhr.onerror = () => {
+                reject({
+                    message: 'Network error. Please check your connection.',
+                    status: HTTP_STATUS_NETWORK_ERROR,
+                    isNetworkError: true,
+                } as ApiError);
+            };
+
+            xhr.ontimeout = () => {
+                reject({
+                    message: 'Request timeout. Please check your connection and try again',
+                    status: HTTP_STATUS_TIMEOUT,
+                    isTimeout: true,
+                } as ApiError);
+            };
+
+            xhr.send(formData);
+        });
     }
 }
 
