@@ -1,17 +1,20 @@
 # Import all models here to register them with Base.metadata
 from .user import User
 from .file import File
+from .chapter import Chapter
 
 
 MODEL_REGISTRY = {
     'user': User,
     'file': File,
+    'chapter': Chapter,
 }
 
 
 __all__ = [
     "User",
     "File",
+    "Chapter",
     "MODEL_REGISTRY",
 ]
 

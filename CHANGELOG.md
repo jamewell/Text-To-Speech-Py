@@ -2,6 +2,7 @@
 ### Added  
 - [2025-08-18] Initialized project structure (Task 1.1).  
 - [2025-08-18] Added baseline `.gitignore`, `README.md`, `LICENSE`.
+- [2026-03-01] Re-prioritized roadmap: moved background worker/PDF parsing to Phase 1 priority (previously planned for Phase 4).
 - chore: Project structure initialized
 - build: `.gitignore` for Python/Node
 - docs: README and CHANGELOG baseline
