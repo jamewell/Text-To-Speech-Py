@@ -2,13 +2,22 @@
 Celery tasks for async processing.
 Contains task definitions for TTS generation, PDF processing, etc.
 """
+import asyncio
+import datetime
+import logging
 import time
 from typing import Dict, Any
 
 from billiard.exceptions import SoftTimeLimitExceeded
 from celery import Task
 
+from core.database import async_session_maker
+from core.minio import get_minio_client
+from models.file import File, FileStatus
+from services.pdf_parser import PdfParsingService
 from worker.celery_app import celery_app
+
+logger = logging.getLogger(__name__)
 
 
 class BaseTask(Task):
@@ -132,55 +141,89 @@ def process_tts(
 )
 def process_pdf(
         self,
-        file_path: str,
-        extract_text: bool = True,
-        extract_images: bool = False
+        file_id: int
 ) -> Dict[str, Any]:
     """
     Process PDF file asynchronously.
 
     Args:
-        file_path: Path to PDF file (MinIO or local)
-        extract_text: Whether to extract text content
-        extract_images: Whether to extract images
+        file_id: Database ID for the uploaded file.
 
     Returns:
         Task result with extracted content
-        :param extract_images:
-        :param extract_text:
-        :param file_path:
-        :param self:
     """
     try:
-        print(f"📄 Processing PDF task {self.request.id}")
-        print(f"📁 File: {file_path}")
-
-        # TODO: Implement actual PDF processing
-        # 1. Download file from MinIO if needed
-        # 2. Use pdfplumber to extract content
-        # 3. Process extracted text/images
-        # 4. Store results
-        # 5. Return metadata
-
-        # Simulate processing
-        time.sleep(3)
-
-        result = {
-            "task_id": self.request.id,
-            "status": "completed",
-            "file_path": file_path,
-            "pages": 10,  # Placeholder
-            "text_extracted": extract_text,
-            "images_extracted": extract_images,
-            "text_length": 5000,  # Placeholder
-            "image_count": 5 if extract_images else 0
-        }
-
-        return result
+        print(f"📄 Processing PDF task {self.request.id} for file_id={file_id}")
+        return asyncio.run(_process_pdf_async(file_id=file_id, task_id=self.request.id))
 
     except Exception as exc:
-        print(f"❌ Error processing PDF: {exc}")
+        asyncio.run(_mark_pdf_failed(file_id=file_id, error=str(exc)))
+        print(f"❌ Error processing PDF for file_id={file_id}: {exc}")
         raise self.retry(exc=exc)
+
+
+async def _process_pdf_async(file_id: int, task_id: str | None) -> Dict[str, Any]:
+    async with async_session_maker() as db:
+        file_record = await db.get(File, file_id)
+        if not file_record:
+            raise ValueError(f"File with id={file_id} not found")
+
+        file_record.status = FileStatus.PROCESSING
+        file_record.error_message = None
+        await db.commit()
+        await db.refresh(file_record)
+
+        minio_client = get_minio_client()
+        response = await minio_client.get_file(
+            bucket_name=file_record.bucket_name,
+            object_name=file_record.stored_filename,
+        )
+
+        try:
+            pdf_bytes = response.read()
+        finally:
+            response.close()
+            response.release_conn()
+
+        chapter_count = await PdfParsingService.parse_and_store(
+            db=db,
+            file_record=file_record,
+            pdf_bytes=pdf_bytes,
+        )
+
+        file_record.status = FileStatus.COMPLETED
+        file_record.error_message = None
+        file_record.processed_date = datetime.datetime.now(datetime.UTC)
+        await db.commit()
+        await db.refresh(file_record)
+
+        logger.info(
+            "PDF processing completed",
+            extra={
+                "file_id": file_id,
+                "chapter_count": chapter_count,
+                "status": file_record.status.value,
+            },
+        )
+
+        return {
+            "task_id": task_id,
+            "file_id": file_id,
+            "status": file_record.status.value,
+            "chapter_count": chapter_count,
+        }
+
+
+async def _mark_pdf_failed(file_id: int, error: str) -> None:
+    async with async_session_maker() as db:
+        file_record = await db.get(File, file_id)
+        if not file_record:
+            return
+
+        file_record.status = FileStatus.FAILED
+        file_record.error_message = error[:500]
+        file_record.processed_date = datetime.datetime.now(datetime.UTC)
+        await db.commit()
 
 
 @celery_app.task(

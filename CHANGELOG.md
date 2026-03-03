@@ -5,6 +5,9 @@
 - [2026-03-01] Re-prioritized roadmap: moved background worker/PDF parsing to Phase 1 priority (previously planned for Phase 4).
 - [2026-03-03] Completed task 4.1 setup validation by adding backend tests for Celery app configuration and Docker Compose Celery/Redis wiring.
 - [2026-03-03] Documented Celery worker + Redis broker runtime stack in the root `README.md`.
+- [2026-03-03] Implemented task 4.2: upload endpoint now enqueues background PDF parsing (`worker.tasks.process_pdf`) instead of parsing inline.
+- [2026-03-03] Implemented task 4.2 worker flow: fetch PDF from MinIO, parse/store chapters, and persist `files.status` transitions (`pending` -> `processing` -> `completed`/`failed`).
+- [2026-03-03] Added tests for async PDF queueing and worker processing status updates.
 - chore: Project structure initialized
 - build: `.gitignore` for Python/Node
 - docs: README and CHANGELOG baseline

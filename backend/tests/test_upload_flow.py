@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from fastapi import HTTPException
@@ -71,6 +71,8 @@ async def test_upload_success_creates_db_record(
 ) -> None:
     fake_minio = FakeMinioClient()
     monkeypatch.setattr("services.files.get_minio_client", lambda: fake_minio)
+    enqueue_mock = Mock()
+    monkeypatch.setattr("api.v1.endpoints.files.process_pdf_task.delay", enqueue_mock)
 
     user = await create_user(async_session_factory)
     authenticate_client(client, session_store, user)
@@ -94,6 +96,7 @@ async def test_upload_success_creates_db_record(
         assert len(files) == 1
         assert files[0].original_filename == "doc.pdf"
         assert files[0].user_id == user.id
+        enqueue_mock.assert_called_once_with(files[0].id)
 
 
 @pytest.mark.asyncio
@@ -187,7 +190,7 @@ async def test_upload_cleans_up_object_when_db_create_fails(
 
 
 @pytest.mark.asyncio
-async def test_upload_succeeds_when_pdf_parsing_fails(
+async def test_upload_succeeds_when_enqueue_fails(
     client,
     async_session_factory: async_sessionmaker[AsyncSession],
     session_store: dict,
@@ -195,10 +198,7 @@ async def test_upload_succeeds_when_pdf_parsing_fails(
 ) -> None:
     fake_minio = FakeMinioClient()
     monkeypatch.setattr("services.files.get_minio_client", lambda: fake_minio)
-    monkeypatch.setattr(
-        "api.v1.endpoints.files.PdfParsingService.parse_and_store",
-        AsyncMock(side_effect=RuntimeError("parser failed")),
-    )
+    monkeypatch.setattr("api.v1.endpoints.files.process_pdf_task.delay", Mock(side_effect=RuntimeError("broker down")))
 
     user = await create_user(async_session_factory, email="parsefail@example.com")
     authenticate_client(client, session_store, user)

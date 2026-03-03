@@ -15,7 +15,7 @@ from models.file import File as FileModel
 from schemas.file import FileUploadResponse, FileListResponse, FileOut, FileDeleteResponse
 from services.auth import AuthService
 from services.files import FileService, FileValidationError
-from services.pdf_parser import PdfParsingService
+from worker.tasks import process_pdf as process_pdf_task
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -203,24 +203,16 @@ async  def upload_file(
                 detail="Failed to create file record"
             )
 
-        # Best effort parsing: malformed PDFs should not fail upload.
+        # Best effort queueing: uploads should still succeed if broker is temporarily unavailable.
         try:
-            await file.seek(0)
-            pdf_content = await file.read()
-            if pdf_content:
-                await PdfParsingService.parse_and_store(
-                    db=db,
-                    file_record=file_record,
-                    pdf_bytes=pdf_content,
-                )
-            await file.seek(0)
-        except Exception as parse_exc:
+            process_pdf_task.delay(file_record.id)
+        except Exception as queue_exc:
             logger.warning(
-                "PDF parsing skipped after upload",
+                "PDF processing task enqueue failed after upload",
                 extra={
                     "file_id": file_record.id,
                     "user_id": current_user.id,
-                    "error": str(parse_exc),
+                    "error": str(queue_exc),
                     "correlation_id": correlation_id,
                 },
             )

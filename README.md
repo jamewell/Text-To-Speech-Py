@@ -25,6 +25,11 @@ lean-tts/
 - `redis` service is configured as broker/result backend for Celery.
 - Celery routing includes separate queues for PDF and TTS processing.
 
+## PDF Background Job (Task 4.2)
+- Upload API stores file metadata and enqueues `worker.tasks.process_pdf(file_id)`.
+- Worker downloads the uploaded PDF from MinIO and parses chapters in the background.
+- File status is persisted as `processing`, then `completed` (or `failed` with `error_message`).
+
 ## Run With Docker
 ```bash
 cd infra
