@@ -3,6 +3,8 @@
 - [2025-08-18] Initialized project structure (Task 1.1).  
 - [2025-08-18] Added baseline `.gitignore`, `README.md`, `LICENSE`.
 - [2026-03-01] Re-prioritized roadmap: moved background worker/PDF parsing to Phase 1 priority (previously planned for Phase 4).
+- [2026-03-03] Completed task 4.1 setup validation by adding backend tests for Celery app configuration and Docker Compose Celery/Redis wiring.
+- [2026-03-03] Documented Celery worker + Redis broker runtime stack in the root `README.md`.
 - chore: Project structure initialized
 - build: `.gitignore` for Python/Node
 - docs: README and CHANGELOG baseline
