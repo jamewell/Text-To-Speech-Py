@@ -3,6 +3,14 @@
 - [2025-08-18] Initialized project structure (Task 1.1).  
 - [2025-08-18] Added baseline `.gitignore`, `README.md`, `LICENSE`.
 - [2026-03-01] Re-prioritized roadmap: moved background worker/PDF parsing to Phase 1 priority (previously planned for Phase 4).
+- [2026-03-03] Completed task 4.1 setup validation by adding backend tests for Celery app configuration and Docker Compose Celery/Redis wiring.
+- [2026-03-03] Documented Celery worker + Redis broker runtime stack in the root `README.md`.
+- [2026-03-03] Implemented task 4.2: upload endpoint now enqueues background PDF parsing (`worker.tasks.process_pdf`) instead of parsing inline.
+- [2026-03-03] Implemented task 4.2 worker flow: fetch PDF from MinIO, parse/store chapters, and persist `files.status` transitions (`pending` -> `processing` -> `completed`/`failed`).
+- [2026-03-03] Added tests for async PDF queueing and worker processing status updates.
+- [2026-03-03] Implemented task 4.3: `process_pdf` now enqueues chapter-level `process_tts(file_id, chapter_id)` jobs after parsing.
+- [2026-03-03] Implemented task 4.3: chapter audio artifacts are uploaded to MinIO (`completed-files`) and persisted on `chapters.audio_bucket_name`/`chapters.audio_object_name`.
+- [2026-03-03] Implemented task 4.3 completion flow: file is marked `completed` only after all chapter TTS jobs finish; worker failures mark file `failed`.
 - chore: Project structure initialized
 - build: `.gitignore` for Python/Node
 - docs: README and CHANGELOG baseline

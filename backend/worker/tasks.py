@@ -2,13 +2,24 @@
 Celery tasks for async processing.
 Contains task definitions for TTS generation, PDF processing, etc.
 """
-import time
+import asyncio
+import datetime
+import logging
 from typing import Dict, Any
 
 from billiard.exceptions import SoftTimeLimitExceeded
 from celery import Task
+from sqlalchemy import select, func
 
+from core.database import async_session_maker
+from core.minio import get_minio_client
+from models.chapter import Chapter
+from models.file import File, FileStatus
+from services.pdf_parser import PdfParsingService
 from worker.celery_app import celery_app
+
+logger = logging.getLogger(__name__)
+AUDIO_BUCKET = "completed-files"
 
 
 class BaseTask(Task):
@@ -62,65 +73,38 @@ def health_check(self) -> Dict[str, str]:
 )
 def process_tts(
         self,
-        text: str,
-        voice: str = "default",
-        language: str = "en",
-        options: Dict[str, Any] = None
+        file_id: int,
+        chapter_id: int,
 ) -> Dict[str, Any]:
     """
     Process text-to-speech conversion asynchronously.
 
     Args:
-        text: Text to convert to speech
-        voice: Voice profile to use
-        language: Language code
-        options: Additional TTS options
+        file_id: File record ID.
+        chapter_id: Chapter record ID to convert.
 
     Returns:
         Task result with file information
 
     Raises:
         SoftTimeLimitExceeded: If task exceeds time limit
-        :param options:
-        :param language:
-        :param voice:
-        :param text:
-        :param self:
     """
     try:
-        print(f"🎤 Processing TTS task {self.request.id}")
-        print(f"📝 Text length: {len(text)} characters")
-        print(f"🗣️ Voice: {voice}, Language: {language}")
-
-        # TODO: Implement actual TTS processing
-        # 1. Validate input text
-        # 2. Connect to TTS service/library
-        # 3. Generate audio file
-        # 4. Upload to MinIO storage
-        # 5. Return file metadata
-
-        # Simulate processing time
-        time.sleep(5)
-
-        result = {
-            "task_id": self.request.id,
-            "status": "completed",
-            "text": text[:100] + "..." if len(text) > 100 else text,
-            "voice": voice,
-            "language": language,
-            "audio_file": f"tts_{self.request.id}.mp3",
-            "duration": 10, # placeholder
-            "file_size_bytes": 1024 * 100, # placeholder
-            "storage_url": f"minio://tts-files/audio/{self.request.id}.mp3"
-        }
-
-        return result
+        print(f"🎤 Processing TTS task {self.request.id} for file_id={file_id}, chapter_id={chapter_id}")
+        return asyncio.run(
+            _process_tts_async(
+                file_id=file_id,
+                chapter_id=chapter_id,
+                task_id=self.request.id,
+            )
+        )
 
     except SoftTimeLimitExceeded:
         print(f"⏱️ Task {self.request.id} exceeded time limit")
         raise
     except Exception as e:
-        print(f"❌ Error processing TTS: {e}")
+        asyncio.run(_mark_file_failed(file_id=file_id, error=str(e)))
+        print(f"❌ Error processing TTS for file_id={file_id}, chapter_id={chapter_id}: {e}")
         raise self.retry(e=e)
 
 
@@ -132,55 +116,169 @@ def process_tts(
 )
 def process_pdf(
         self,
-        file_path: str,
-        extract_text: bool = True,
-        extract_images: bool = False
+        file_id: int
 ) -> Dict[str, Any]:
     """
     Process PDF file asynchronously.
 
     Args:
-        file_path: Path to PDF file (MinIO or local)
-        extract_text: Whether to extract text content
-        extract_images: Whether to extract images
+        file_id: Database ID for the uploaded file.
 
     Returns:
         Task result with extracted content
-        :param extract_images:
-        :param extract_text:
-        :param file_path:
-        :param self:
     """
     try:
-        print(f"📄 Processing PDF task {self.request.id}")
-        print(f"📁 File: {file_path}")
-
-        # TODO: Implement actual PDF processing
-        # 1. Download file from MinIO if needed
-        # 2. Use pdfplumber to extract content
-        # 3. Process extracted text/images
-        # 4. Store results
-        # 5. Return metadata
-
-        # Simulate processing
-        time.sleep(3)
-
-        result = {
-            "task_id": self.request.id,
-            "status": "completed",
-            "file_path": file_path,
-            "pages": 10,  # Placeholder
-            "text_extracted": extract_text,
-            "images_extracted": extract_images,
-            "text_length": 5000,  # Placeholder
-            "image_count": 5 if extract_images else 0
-        }
-
-        return result
+        print(f"📄 Processing PDF task {self.request.id} for file_id={file_id}")
+        return asyncio.run(_process_pdf_async(file_id=file_id, task_id=self.request.id))
 
     except Exception as exc:
-        print(f"❌ Error processing PDF: {exc}")
+        asyncio.run(_mark_pdf_failed(file_id=file_id, error=str(exc)))
+        print(f"❌ Error processing PDF for file_id={file_id}: {exc}")
         raise self.retry(exc=exc)
+
+
+async def _process_pdf_async(file_id: int, task_id: str | None) -> Dict[str, Any]:
+    async with async_session_maker() as db:
+        file_record = await db.get(File, file_id)
+        if not file_record:
+            raise ValueError(f"File with id={file_id} not found")
+
+        file_record.status = FileStatus.PROCESSING
+        file_record.error_message = None
+        await db.commit()
+        await db.refresh(file_record)
+
+        minio_client = get_minio_client()
+        response = await minio_client.get_file(
+            bucket_name=file_record.bucket_name,
+            object_name=file_record.stored_filename,
+        )
+
+        try:
+            pdf_bytes = response.read()
+        finally:
+            response.close()
+            response.release_conn()
+
+        chapter_count = await PdfParsingService.parse_and_store(
+            db=db,
+            file_record=file_record,
+            pdf_bytes=pdf_bytes,
+        )
+
+        chapter_result = await db.execute(
+            select(Chapter.id).where(Chapter.file_id == file_record.id).order_by(Chapter.chapter_index.asc())
+        )
+        chapter_ids = [row[0] for row in chapter_result.all()]
+
+        for chapter_id in chapter_ids:
+            process_tts.delay(file_record.id, chapter_id)
+
+        file_record.status = FileStatus.PROCESSING
+        file_record.error_message = None
+        file_record.processed_date = None
+        await db.commit()
+        await db.refresh(file_record)
+
+        logger.info(
+            "PDF processing completed",
+            extra={
+                "file_id": file_id,
+                "chapter_count": chapter_count,
+                "queued_tts_jobs": len(chapter_ids),
+                "status": file_record.status.value,
+            },
+        )
+
+        return {
+            "task_id": task_id,
+            "file_id": file_id,
+            "status": file_record.status.value,
+            "chapter_count": chapter_count,
+            "queued_tts_jobs": len(chapter_ids),
+        }
+
+
+async def _mark_pdf_failed(file_id: int, error: str) -> None:
+    async with async_session_maker() as db:
+        file_record = await db.get(File, file_id)
+        if not file_record:
+            return
+
+        file_record.status = FileStatus.FAILED
+        file_record.error_message = error[:500]
+        file_record.processed_date = datetime.datetime.now(datetime.UTC)
+        await db.commit()
+
+
+async def _mark_file_failed(file_id: int, error: str) -> None:
+    async with async_session_maker() as db:
+        file_record = await db.get(File, file_id)
+        if not file_record:
+            return
+
+        file_record.status = FileStatus.FAILED
+        file_record.error_message = error[:500]
+        file_record.processed_date = datetime.datetime.now(datetime.UTC)
+        await db.commit()
+
+
+async def _process_tts_async(file_id: int, chapter_id: int, task_id: str | None) -> Dict[str, Any]:
+    async with async_session_maker() as db:
+        file_record = await db.get(File, file_id)
+        if not file_record:
+            raise ValueError(f"File with id={file_id} not found")
+
+        chapter = await db.get(Chapter, chapter_id)
+        if not chapter or chapter.file_id != file_id:
+            raise ValueError(f"Chapter with id={chapter_id} not found for file_id={file_id}")
+
+        file_record.status = FileStatus.PROCESSING
+        file_record.error_message = None
+
+        # Placeholder audio payload until real TTS provider integration.
+        audio_bytes = (
+            f"chapter={chapter.chapter_index}\n"
+            f"title={chapter.title}\n"
+            f"{chapter.content}"
+        ).encode("utf-8")
+        object_name = f"file_{file_id}/chapter_{chapter.chapter_index}_{chapter.id}.mp3"
+
+        minio_client = get_minio_client()
+        await minio_client.upload_file(
+            bucket_name=AUDIO_BUCKET,
+            object_name=object_name,
+            file_data=audio_bytes,
+            file_size=len(audio_bytes),
+            content_type="audio/mpeg",
+        )
+
+        chapter.audio_bucket_name = AUDIO_BUCKET
+        chapter.audio_object_name = object_name
+        await db.commit()
+
+        remaining_result = await db.execute(
+            select(func.count())
+            .select_from(Chapter)
+            .where(Chapter.file_id == file_id)
+            .where(Chapter.audio_object_name.is_(None))
+        )
+        remaining_count = remaining_result.scalar_one()
+
+        if remaining_count == 0:
+            file_record.status = FileStatus.COMPLETED
+            file_record.error_message = None
+            file_record.processed_date = datetime.datetime.now(datetime.UTC)
+            await db.commit()
+
+        return {
+            "task_id": task_id,
+            "file_id": file_id,
+            "chapter_id": chapter_id,
+            "remaining_chapters": remaining_count,
+            "status": file_record.status.value,
+            "audio_object_name": object_name,
+        }
 
 
 @celery_app.task(
