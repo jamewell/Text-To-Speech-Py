@@ -19,6 +19,8 @@ class Chapter(Base):
     content = Column(Text, nullable=False)
     start_page = Column(Integer, nullable=False)
     end_page = Column(Integer, nullable=False)
+    audio_bucket_name = Column(String(100), nullable=True)
+    audio_object_name = Column(String(500), nullable=True)
     created_at = Column(
         TIMESTAMP(timezone=True),
         default=lambda: datetime.datetime.now(datetime.UTC),

@@ -30,6 +30,12 @@ lean-tts/
 - Worker downloads the uploaded PDF from MinIO and parses chapters in the background.
 - File status is persisted as `processing`, then `completed` (or `failed` with `error_message`).
 
+## TTS Background Job (Task 4.3)
+- After PDF parsing, the worker enqueues chapter-level jobs: `worker.tasks.process_tts(file_id, chapter_id)`.
+- Each chapter TTS job uploads generated audio artifacts to MinIO bucket `completed-files`.
+- Chapter audio object metadata is stored on chapter records (`audio_bucket_name`, `audio_object_name`).
+- A file is marked `completed` only when all chapter TTS jobs have uploaded audio successfully.
+
 ## Run With Docker
 ```bash
 cd infra

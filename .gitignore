@@ -5,6 +5,7 @@
 .vscode/
 .idea
 .venv
+CLAUDE.md
 
 # Backend
 __pycache__/

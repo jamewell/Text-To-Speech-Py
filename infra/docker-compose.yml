@@ -63,7 +63,7 @@ services:
       context: ../backend
     container_name: tts-celery
     env_file: ./.env
-    command: ["celery", "-A", "worker.celery_app:celery_app", "worker", "--loglevel=info"]
+    command: ["celery", "-A", "worker.celery_app:celery_app", "worker", "--loglevel=info", "-Q", "pdf_processing,tts_processing,tts_default"]
     volumes:
       - ../backend:/app
     depends_on:
