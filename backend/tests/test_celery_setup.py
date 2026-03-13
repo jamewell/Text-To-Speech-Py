@@ -47,6 +47,6 @@ def test_docker_compose_configures_celery_worker_and_redis_broker() -> None:
     assert celery_block_match is not None
 
     celery_block = celery_block_match.group("block")
-    assert "command: [\"celery\", \"-A\", \"worker.celery_app:celery_app\", \"worker\", \"--loglevel=info\"]" in celery_block
+    assert "command: [\"celery\", \"-A\", \"worker.celery_app:celery_app\", \"worker\", \"--loglevel=info\", \"-Q\", \"pdf_processing,tts_processing,tts_default\"]" in celery_block
     assert "depends_on:" in celery_block
-    assert "- redis" in celery_block
+    assert "redis:" in celery_block

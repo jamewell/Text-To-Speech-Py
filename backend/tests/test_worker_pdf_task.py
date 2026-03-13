@@ -1,3 +1,5 @@
+from unittest.mock import AsyncMock
+
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -199,6 +201,10 @@ async def test_process_tts_async_uploads_audio_and_marks_file_completed(
     fake_minio = FakeMinioClient(b"")
     monkeypatch.setattr("worker.tasks.async_session_maker", async_session_factory)
     monkeypatch.setattr("worker.tasks.get_minio_client", lambda: fake_minio)
+    monkeypatch.setattr(
+        "worker.tasks.CoquiTTSService.synthesize",
+        AsyncMock(return_value=b"RIFF\x00\x00\x00\x00WAVEfmt "),
+    )
 
     result = await _process_tts_async(file_id=file_id, chapter_id=chapter_id, task_id="tts-task")
 
@@ -209,7 +215,7 @@ async def test_process_tts_async_uploads_audio_and_marks_file_completed(
     assert result["status"] == "completed"
     assert fake_minio.uploaded
     assert fake_minio.uploaded[0][0] == AUDIO_BUCKET
-    assert fake_minio.uploaded[0][3] == "audio/mpeg"
+    assert fake_minio.uploaded[0][3] == "audio/wav"
 
     async with async_session_factory() as verify_session:
         persisted_file = await verify_session.get(File, file_id)
