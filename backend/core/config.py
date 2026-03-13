@@ -37,6 +37,8 @@ class Settings(BaseSettings):
     CELERY_BROKER_URL: str = os.getenv("CELERY_BROKER_URL")
     CELERY_RESULT_BACKEND: str = os.getenv("CELERY_RESULT_BACKEND")
 
+    TTS_SERVICE_URL: str = os.getenv("TTS_SERVICE_URL", "http://coqui-tts:5002")
+
     model_config = SettingsConfigDict(
         env_file=".env",
         case_sensitive=True,

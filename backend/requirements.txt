@@ -16,6 +16,9 @@ alembic==1.17.2
 celery==5.6.0
 redis==7.1.0
 
+# HTTP client (TTS service calls)
+httpx==0.28.1
+
 # File storage
 minio==7.2.20
 

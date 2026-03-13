@@ -16,6 +16,7 @@ from core.minio import get_minio_client
 from models.chapter import Chapter
 from models.file import File, FileStatus
 from services.pdf_parser import PdfParsingService
+from services.tts import CoquiTTSService
 from worker.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
@@ -103,7 +104,8 @@ def process_tts(
         print(f"⏱️ Task {self.request.id} exceeded time limit")
         raise
     except Exception as e:
-        asyncio.run(_mark_file_failed(file_id=file_id, error=str(e)))
+        if self.request.retries >= self.max_retries:
+            asyncio.run(_mark_file_failed(file_id=file_id, error=str(e)))
         print(f"❌ Error processing TTS for file_id={file_id}, chapter_id={chapter_id}: {e}")
         raise self.retry(e=e)
 
@@ -236,13 +238,8 @@ async def _process_tts_async(file_id: int, chapter_id: int, task_id: str | None)
         file_record.status = FileStatus.PROCESSING
         file_record.error_message = None
 
-        # Placeholder audio payload until real TTS provider integration.
-        audio_bytes = (
-            f"chapter={chapter.chapter_index}\n"
-            f"title={chapter.title}\n"
-            f"{chapter.content}"
-        ).encode("utf-8")
-        object_name = f"file_{file_id}/chapter_{chapter.chapter_index}_{chapter.id}.mp3"
+        audio_bytes = await CoquiTTSService.synthesize(chapter.content)
+        object_name = f"file_{file_id}/chapter_{chapter.chapter_index}_{chapter.id}.wav"
 
         minio_client = get_minio_client()
         await minio_client.upload_file(
@@ -250,7 +247,7 @@ async def _process_tts_async(file_id: int, chapter_id: int, task_id: str | None)
             object_name=object_name,
             file_data=audio_bytes,
             file_size=len(audio_bytes),
-            content_type="audio/mpeg",
+            content_type="audio/wav",
         )
 
         chapter.audio_bucket_name = AUDIO_BUCKET

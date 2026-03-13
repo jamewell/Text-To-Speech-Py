@@ -7,6 +7,8 @@ services:
     ports:
       - "${BACKEND_PORT}:8000"  # ← Uses .env variable
     env_file: .env  # ← Load all variables
+    volumes:
+      - ../infra:/app/infra:ro
     depends_on:
       - postgres
       - redis
@@ -67,10 +69,30 @@ services:
     volumes:
       - ../backend:/app
     depends_on:
-      - backend
-      - redis
-      - postgres
+      redis:
+        condition: service_started
+      postgres:
+        condition: service_started
+      coqui-tts:
+        condition: service_healthy
+
+  coqui-tts:
+    image: ghcr.io/coqui-ai/tts
+    container_name: tts-coqui
+    entrypoint: ["tts-server"]
+    command: ["--model_name", "tts_models/en/ljspeech/tacotron2-DDC", "--port", "5002"]
+    ports:
+      - "5002:5002"
+    volumes:
+      - coqui_models:/root/.local/share/tts
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5002/api/tts?text=test')"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
 
 volumes:
   pgdata:
   minio_data:
+  coqui_models:
