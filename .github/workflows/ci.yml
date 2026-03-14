@@ -1,0 +1,113 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create CI env file
+        working-directory: infra
+        run: |
+          cat > .env <<'EOF'
+          BACKEND_PORT=8000
+          POSTGRES_HOST=postgres
+          POSTGRES_PORT=5432
+          POSTGRES_USER=ci
+          POSTGRES_PASSWORD=ci
+          POSTGRES_DB=ci_test
+          REDIS_HOST=redis
+          REDIS_PORT=6379
+          REDIS_DB=0
+          REDIS_PASSWORD=
+          MINIO_HOST=minio
+          MINIO_PORT=9000
+          MINIO_ACCESS_KEY=minioadmin
+          MINIO_SECRET_KEY=minioadmin
+          MINIO_BUCKET_NAME=tts-files
+          MINIO_SECURE=false
+          SECRET_KEY=ci-secret-key-not-for-production
+          TTS_SERVICE_URL=http://localhost:5002
+          EOF
+
+      - name: Build backend image
+        working-directory: infra
+        run: docker compose build backend
+
+      - name: Run pytest
+        working-directory: infra
+        run: |
+          docker compose run --rm --no-deps \
+            -e POSTGRES_HOST=localhost \
+            -e POSTGRES_PORT=5432 \
+            -e POSTGRES_USER=ci \
+            -e POSTGRES_PASSWORD=ci \
+            -e POSTGRES_DB=ci_test \
+            -e REDIS_HOST=localhost \
+            -e REDIS_PORT=6379 \
+            -e REDIS_DB=0 \
+            -e REDIS_PASSWORD= \
+            -e MINIO_HOST=localhost \
+            -e MINIO_PORT=9000 \
+            -e MINIO_ACCESS_KEY=minioadmin \
+            -e MINIO_SECRET_KEY=minioadmin \
+            -e MINIO_BUCKET_NAME=tts-files \
+            -e MINIO_SECURE=false \
+            -e SECRET_KEY=ci-secret-key-not-for-production \
+            -e TTS_SERVICE_URL=http://localhost:5002 \
+            backend python -m pytest -q
+
+  build-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build frontend image
+        working-directory: infra
+        run: |
+          cat > .env <<'EOF'
+          BACKEND_PORT=8000
+          EOF
+          docker compose build frontend
+
+  lint-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install ruff
+        run: pip install ruff
+
+      - name: Run ruff
+        run: ruff check backend/
+
+  lint-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Run lint
+        working-directory: frontend
+        run: npm run lint
