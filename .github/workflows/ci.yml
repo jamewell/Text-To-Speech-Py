@@ -16,6 +16,13 @@ jobs:
         working-directory: infra
         run: |
           cat > .env <<'EOF'
+          PROJECT_NAME=tts-web-app
+          VERSION=0.1.0
+          ENVIRONMENT=testing
+          DEBUG=false
+          HOST=0.0.0.0
+          PORT=8000
+          API_V1_STR=/api/v1
           BACKEND_PORT=8000
           POSTGRES_HOST=postgres
           POSTGRES_PORT=5432
@@ -44,6 +51,13 @@ jobs:
         working-directory: infra
         run: |
           docker compose run --rm --no-deps \
+            -e PROJECT_NAME=tts-web-app \
+            -e VERSION=0.1.0 \
+            -e ENVIRONMENT=testing \
+            -e DEBUG=false \
+            -e HOST=0.0.0.0 \
+            -e PORT=8000 \
+            -e API_V1_STR=/api/v1 \
             -e POSTGRES_HOST=localhost \
             -e POSTGRES_PORT=5432 \
             -e POSTGRES_USER=ci \
