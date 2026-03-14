@@ -6,7 +6,6 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-import models
 from api.v1.endpoints.files import router as files_router
 from core.database import Base, get_db_session
 from core.session import sessions

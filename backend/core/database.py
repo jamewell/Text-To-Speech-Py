@@ -40,7 +40,6 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
 async def create_tables():
     try:
 
-        import models
 
         print(f"🗄️ Found {len(Base.metadata.tables)} tables to create:")
         for table_name in Base.metadata.tables.keys():
@@ -57,7 +56,6 @@ async def create_tables():
 
 async def drop_tables():
     try:
-        import models
 
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.drop_all)
