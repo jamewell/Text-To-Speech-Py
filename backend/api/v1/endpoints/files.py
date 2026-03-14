@@ -2,7 +2,7 @@ import logging
 import time
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Form
 from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import Request
@@ -11,8 +11,8 @@ from starlette import status
 from core.database import get_db_session
 from core.session import get_session_token, sessions
 from models import User
-from models.file import File as FileModel
-from schemas.file import FileUploadResponse, FileListResponse, FileOut, FileDeleteResponse
+from models.file import File as FileModel, FileVisibility
+from schemas.file import FileUploadResponse, FileListResponse, FileOut, FileDeleteResponse, FileVisibilityUpdate
 from services.auth import AuthService
 from services.files import FileService, FileValidationError
 from worker.tasks import process_pdf as process_pdf_task
@@ -125,8 +125,9 @@ async def get_current_user_dependency(
     },
     tags=["Files"]
 )
-async  def upload_file(
+async def upload_file(
         file: UploadFile = File(..., description="PDF file to upload"),
+        visibility: str = Form("private", description="File visibility: 'private' or 'public'"),
         db: AsyncSession = Depends(get_db_session),
         current_user: User = Depends(get_current_user_dependency)
 ):
@@ -150,6 +151,14 @@ async  def upload_file(
     )
 
     try:
+        try:
+            visibility_enum = FileVisibility(visibility)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid visibility value '{visibility}'. Allowed: private, public"
+            )
+
         FileService.validate_pdf_files(file)
 
         existing_file = await FileService.check_duplicate_file(
@@ -191,7 +200,8 @@ async  def upload_file(
                 original_filename=file.filename,
                 stored_filename=stored_filename,
                 file_size=actual_file_size,
-                mime_type=file.content_type
+                mime_type=file.content_type,
+                visibility=visibility_enum,
             )
         except Exception:
             await FileService.delete_uploaded_file(stored_filename)
@@ -440,4 +450,72 @@ async def delete_file(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to delete file"
+        )
+
+
+@router.patch(
+    "/{file_id}/visibility",
+    response_model=FileOut,
+    summary="Update file visibility",
+    description="""
+    Update the visibility of a file (private or public).
+
+    Only the file owner can change visibility.
+
+    **Returns:**
+    - 200: Updated file details
+    - 404: File not found or not authorized
+    - 500: Failed to update file
+    """,
+    tags=["Files"]
+)
+async def update_file_visibility(
+        file_id: int,
+        body: FileVisibilityUpdate,
+        db: AsyncSession = Depends(get_db_session),
+        current_user: User = Depends(get_current_user_dependency)
+):
+    """Update visibility of a file (owner only)."""
+
+    logger.info(
+        "File visibility update request",
+        extra={
+            "file_id": file_id,
+            "user_id": current_user.id,
+            "new_visibility": body.visibility
+        }
+    )
+
+    try:
+        file_record = await FileService.get_file_by_owner(db, file_id, current_user.id)
+
+        if not file_record:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="File not found"
+            )
+
+        file_record.visibility = FileVisibility(body.visibility)
+        await db.commit()
+        await db.refresh(file_record)
+
+        return FileOut.model_validate(file_record)
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+        await db.rollback()
+        logger.error(
+            "Failed to update file visibility",
+            extra={
+                "file_id": file_id,
+                "user_id": current_user.id,
+                "error": str(e)
+            },
+            exc_info=True
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update file visibility"
         )

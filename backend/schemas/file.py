@@ -3,10 +3,12 @@ from typing import Optional
 
 from pydantic import BaseModel, Field, field_validator
 
+from schemas.chapter import ChapterOut
+
 
 class FileUploadResponse(BaseModel):
 
-    id:int = Field(..., description="Unique file identifier")
+    id: int = Field(..., description="Unique file identifier")
     original_filename: str = Field(..., description="Original name of the uploaded file")
     stored_filename: str = Field(..., description="Internal storage name")
     file_size: int = Field(..., description="File size in bytes")
@@ -39,9 +41,11 @@ class FileOut(BaseModel):
     mime_type: str
     bucket_name: str
     status: str
+    visibility: str
     error_message: Optional[str] = None
     upload_date: datetime
     processed_date: Optional[datetime] = None
+    chapters: list[ChapterOut] = []
 
     model_config = {
         "from_attributes": True,
@@ -80,6 +84,10 @@ class FileStatusUpdate(BaseModel):
         if info.data.get("status") == "failed" and not v:
             raise ValueError("error_message is required when status is 'failed'")
         return v
+
+
+class FileVisibilityUpdate(BaseModel):
+    visibility: str = Field(..., pattern="^(private|public)$", description="New visibility value")
 
 
 class FileDeleteResponse(BaseModel):

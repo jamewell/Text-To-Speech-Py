@@ -26,7 +26,7 @@ async def lifespan(application: FastAPI):
 
     logger.info("Checking database connection...")
     try:
-        from core.database import check_database_connection, create_tables
+        from core.database import check_database_connection, create_tables, run_schema_migrations
 
         connection_ok = await check_database_connection()
         if not connection_ok:
@@ -35,6 +35,7 @@ async def lifespan(application: FastAPI):
 
         logger.info("🗄️ Initializing database tables...")
         await create_tables()
+        await run_schema_migrations()
 
     except Exception as e:
         logger.error(

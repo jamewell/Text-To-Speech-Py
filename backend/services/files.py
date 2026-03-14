@@ -15,10 +15,11 @@ from fastapi import UploadFile, HTTPException
 from minio import S3Error
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from starlette import status
 
 from core.minio import get_minio_client
-from models.file import File, FileStatus
+from models.file import File, FileStatus, FileVisibility
 
 logger = logging.getLogger(__name__)
 
@@ -255,8 +256,9 @@ class FileService:
             original_filename: str,
             stored_filename: str,
             file_size: int,
-            mime_type: str
-    )-> File:
+            mime_type: str,
+            visibility: FileVisibility = FileVisibility.PRIVATE,
+    ) -> File:
         """
         Create a database record for the uploaded file.
 
@@ -296,7 +298,8 @@ class FileService:
                 file_size=file_size,
                 mime_type=mime_type,
                 bucket_name=RAW_PDF_BUCKET,
-                status=FileStatus.PENDING
+                status=FileStatus.PENDING,
+                visibility=visibility,
             )
 
             db.add(file_record)
@@ -431,6 +434,7 @@ class FileService:
         try:
             result = await db.execute(
                 select(File)
+                .options(selectinload(File.chapters))
                 .where(and_(File.user_id == user_id))
                 .order_by(File.upload_date.desc())
                 .offset(skip)
@@ -467,22 +471,30 @@ class FileService:
             db: AsyncSession,
             file_id: int,
             user_id: int,
-    )-> Optional[File]:
+    ) -> Optional[File]:
         """
-        Get a specific file by ID, ensuring it belongs to the user.
+        Get a specific file by ID for the owning user, with chapters eager-loaded.
+
+        Returns the file if:
+          - The file exists AND belongs to user_id, OR
+          - The file exists AND is public
 
         Args:
             db: Database session
             file_id: ID of the file
-            user_id: ID of the user (for authorization)
+            user_id: ID of the requesting user
 
         Returns:
-            Optional[File]: File record if found and authorized, None otherwise
+            Optional[File]: File record if found and accessible, None otherwise
         """
         try:
             result = await db.execute(
                 select(File)
-                .where(and_(File.id == file_id), and_(File.user_id == user_id))
+                .options(selectinload(File.chapters))
+                .where(
+                    File.id == file_id,
+                    (File.user_id == user_id) | (File.visibility == FileVisibility.PUBLIC),
+                )
                 .limit(1)
             )
 
@@ -491,18 +503,12 @@ class FileService:
             if file_record:
                 logger.debug(
                     "File retrieved",
-                    extra={
-                        "file_id": file_id,
-                        "user_id": user_id
-                    }
+                    extra={"file_id": file_id, "user_id": user_id}
                 )
             else:
                 logger.warning(
                     "File not found or unauthorized",
-                    extra={
-                        "file_id": file_id,
-                        "user_id": user_id
-                    }
+                    extra={"file_id": file_id, "user_id": user_id}
                 )
 
             return file_record
@@ -510,11 +516,32 @@ class FileService:
         except Exception as e:
             logger.error(
                 "Failed to retrieve file",
-                extra={
-                    "file_id": file_id,
-                    "user_id": user_id,
-                    "error": str(e)
-                }
+                extra={"file_id": file_id, "user_id": user_id, "error": str(e)}
+            )
+            raise
+
+    @staticmethod
+    async def get_file_by_owner(
+            db: AsyncSession,
+            file_id: int,
+            user_id: int,
+    ) -> Optional[File]:
+        """
+        Fetch a file only if user_id is the owner. Used for mutating operations
+        (delete, update) where visibility must never grant access to non-owners.
+        """
+        try:
+            result = await db.execute(
+                select(File)
+                .options(selectinload(File.chapters))
+                .where(File.id == file_id, File.user_id == user_id)
+                .limit(1)
+            )
+            return result.scalar_one_or_none()
+        except Exception as e:
+            logger.error(
+                "Failed to retrieve file (owner check)",
+                extra={"file_id": file_id, "user_id": user_id, "error": str(e)}
             )
             raise
 
@@ -549,7 +576,7 @@ class FileService:
             }
         )
 
-        file_record = await FileService.get_file_by_id(db, file_id, user_id)
+        file_record = await FileService.get_file_by_owner(db, file_id, user_id)
 
         if not file_record:
             logger.warning(
