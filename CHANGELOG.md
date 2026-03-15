@@ -11,6 +11,12 @@
 - [2026-03-03] Implemented task 4.3: `process_pdf` now enqueues chapter-level `process_tts(file_id, chapter_id)` jobs after parsing.
 - [2026-03-03] Implemented task 4.3: chapter audio artifacts are uploaded to MinIO (`completed-files`) and persisted on `chapters.audio_bucket_name`/`chapters.audio_object_name`.
 - [2026-03-03] Implemented task 4.3 completion flow: file is marked `completed` only after all chapter TTS jobs finish; worker failures mark file `failed`.
+- [2026-03-15] Implemented Task 1.3: GitHub Actions CI/CD pipeline with test, lint-backend (ruff), build-frontend, and lint-frontend jobs triggered on push/PR to main.
+- [2026-03-15] Implemented Task 3.6: `GET /chapters/{chapter_id}/audio` endpoint returning a MinIO presigned URL (3600s TTL) with owner/public visibility access control.
+- [2026-03-15] Added `FileVisibility` enum (private/public) to the `files` table; visibility is set at upload time and updatable via `PATCH /files/{id}/visibility`.
+- [2026-03-15] Invalid visibility values at upload now return 400 instead of 500; `FileVisibilityUpdate` schema enforces allowed values on the PATCH endpoint.
+- [2026-03-15] Mutating file operations (delete, visibility update) restricted to file owner; public files are readable but not mutable by non-owners.
+- [2026-03-15] `GET /files/{id}` and `GET /files/list` now eager-load chapters so the chapter list is available to the frontend player without a second request.
 - chore: Project structure initialized
 - build: `.gitignore` for Python/Node
 - docs: README and CHANGELOG baseline
