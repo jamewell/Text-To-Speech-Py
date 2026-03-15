@@ -15,6 +15,11 @@ class FileStatus(str, Enum):
     FAILED = "failed"
 
 
+class FileVisibility(str, Enum):
+    PRIVATE = "private"
+    PUBLIC = "public"
+
+
 class File(Base):
     """
    Model for storing file metadata.
@@ -28,6 +33,7 @@ class File(Base):
        mime_type: MIME type of the file
        bucket_name: MinIO bucket where file is stored
        status: Current processing status
+       visibility: Whether the file is public or private (default: private)
        error_message: Error details if status is FAILED
        upload_date: Timestamp of file upload
        processed_date: Timestamp of processing completion
@@ -47,6 +53,12 @@ class File(Base):
     status = Column(
         SQLEnum(FileStatus),
         default=FileStatus.PENDING,
+        nullable=False,
+        index=True
+    )
+    visibility = Column(
+        SQLEnum(FileVisibility),
+        default=FileVisibility.PRIVATE,
         nullable=False,
         index=True
     )
@@ -81,6 +93,7 @@ class File(Base):
             "mime_type": self.mime_type,
             "bucket_name": self.bucket_name,
             "status": self.status,
+            "visibility": self.visibility,
             "error_message": self.error_message,
             "parsed_title": self.parsed_title,
             "parsed_author": self.parsed_author,

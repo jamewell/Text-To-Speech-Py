@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from core.session import SESSION_COOKIE_NAME
 from models import User
-from models.file import File, FileStatus
+from models.file import File, FileStatus, FileVisibility
 from services.files import FileService
 
 
@@ -213,6 +213,152 @@ async def test_upload_succeeds_when_enqueue_fails(
     assert payload["original_filename"] == "doc.pdf"
     assert payload["status"] == "pending"
     assert fake_minio.uploaded
+
+
+@pytest.mark.asyncio
+async def test_upload_invalid_visibility_returns_400(
+    client,
+    async_session_factory: async_sessionmaker[AsyncSession],
+    session_store: dict,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_minio = FakeMinioClient()
+    monkeypatch.setattr("services.files.get_minio_client", lambda: fake_minio)
+
+    user = await create_user(async_session_factory, email="badvis@example.com")
+    authenticate_client(client, session_store, user)
+
+    response = client.post(
+        "/files/upload_file",
+        files={"file": ("doc.pdf", b"%PDF-1.4 content", "application/pdf")},
+        data={"visibility": "invalid_value"},
+    )
+
+    assert response.status_code == 400
+    assert "Invalid visibility value" in response.json()["detail"]
+    assert not fake_minio.uploaded
+
+
+@pytest.mark.asyncio
+async def test_upload_with_public_visibility(
+    client,
+    async_session_factory: async_sessionmaker[AsyncSession],
+    session_store: dict,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_minio = FakeMinioClient()
+    monkeypatch.setattr("services.files.get_minio_client", lambda: fake_minio)
+    monkeypatch.setattr("api.v1.endpoints.files.process_pdf_task.delay", Mock())
+
+    user = await create_user(async_session_factory, email="pubvis@example.com")
+    authenticate_client(client, session_store, user)
+
+    response = client.post(
+        "/files/upload_file",
+        files={"file": ("doc.pdf", b"%PDF-1.4 content", "application/pdf")},
+        data={"visibility": "public"},
+    )
+
+    assert response.status_code == 201
+
+    async with async_session_factory() as session:
+        result = await session.execute(select(File))
+        file_record = result.scalars().first()
+        assert file_record is not None
+        assert file_record.visibility == FileVisibility.PUBLIC
+
+
+@pytest.mark.asyncio
+async def test_patch_visibility_updates_file(
+    client,
+    async_session_factory: async_sessionmaker[AsyncSession],
+    session_store: dict,
+) -> None:
+    user = await create_user(async_session_factory, email="patchvis@example.com")
+    authenticate_client(client, session_store, user)
+
+    async with async_session_factory() as session:
+        file_record = File(
+            user_id=user.id,
+            original_filename="doc.pdf",
+            stored_filename="stored_patch.pdf",
+            file_size=1234,
+            mime_type="application/pdf",
+            bucket_name="raw-pdf-uploads",
+            status=FileStatus.PENDING,
+            visibility=FileVisibility.PRIVATE,
+            upload_date=datetime.now(timezone.utc),
+        )
+        session.add(file_record)
+        await session.commit()
+        await session.refresh(file_record)
+        file_id = file_record.id
+
+    response = client.patch(
+        f"/files/{file_id}/visibility",
+        json={"visibility": "public"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["visibility"] == "public"
+
+    async with async_session_factory() as session:
+        result = await session.execute(select(File).where(File.id == file_id))
+        updated = result.scalar_one()
+        assert updated.visibility == FileVisibility.PUBLIC
+
+
+@pytest.mark.asyncio
+async def test_patch_visibility_invalid_value_returns_422(
+    client,
+    async_session_factory: async_sessionmaker[AsyncSession],
+    session_store: dict,
+) -> None:
+    user = await create_user(async_session_factory, email="patchbad@example.com")
+    authenticate_client(client, session_store, user)
+
+    response = client.patch(
+        "/files/1/visibility",
+        json={"visibility": "invalid"},
+    )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_patch_visibility_non_owner_returns_404(
+    client,
+    async_session_factory: async_sessionmaker[AsyncSession],
+    session_store: dict,
+) -> None:
+    owner = await create_user(async_session_factory, email="owner_patch@example.com")
+    other = await create_user(async_session_factory, email="other_patch@example.com")
+
+    async with async_session_factory() as session:
+        file_record = File(
+            user_id=owner.id,
+            original_filename="doc.pdf",
+            stored_filename="stored_nonowner.pdf",
+            file_size=1234,
+            mime_type="application/pdf",
+            bucket_name="raw-pdf-uploads",
+            status=FileStatus.PENDING,
+            visibility=FileVisibility.PUBLIC,
+            upload_date=datetime.now(timezone.utc),
+        )
+        session.add(file_record)
+        await session.commit()
+        await session.refresh(file_record)
+        file_id = file_record.id
+
+    authenticate_client(client, session_store, other)
+
+    response = client.patch(
+        f"/files/{file_id}/visibility",
+        json={"visibility": "private"},
+    )
+
+    assert response.status_code == 404
 
 
 @pytest.mark.asyncio

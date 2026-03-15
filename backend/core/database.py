@@ -54,6 +54,35 @@ async def create_tables():
         raise
 
 
+async def run_schema_migrations():
+    """
+    Apply additive schema changes that create_all cannot handle on existing tables.
+    Each statement is idempotent (IF NOT EXISTS / DO NOTHING).
+    """
+    migrations = [
+        """
+        DO $$
+        BEGIN
+          IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'filevisibility') THEN
+            CREATE TYPE filevisibility AS ENUM ('PRIVATE', 'PUBLIC');
+          END IF;
+        END $$
+        """,
+        """
+        ALTER TABLE files
+          ADD COLUMN IF NOT EXISTS visibility filevisibility NOT NULL DEFAULT 'PRIVATE'
+        """,
+    ]
+    try:
+        async with engine.begin() as conn:
+            for stmt in migrations:
+                await conn.execute(text(stmt))
+        print("✅ Schema migrations applied")
+    except Exception as e:
+        print(f"❌ Schema migration failed: {e}")
+        raise
+
+
 async def drop_tables():
     try:
 
