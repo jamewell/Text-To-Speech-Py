@@ -20,8 +20,6 @@ import itertools
 from collections.abc import AsyncGenerator, Generator
 from datetime import datetime, timezone
 
-_file_counter = itertools.count(1)
-
 import pytest
 import pytest_asyncio
 from fastapi import FastAPI
@@ -35,6 +33,8 @@ from core.session import SESSION_COOKIE_NAME, sessions
 from models import User, Chapter
 from models.file import File, FileStatus, FileVisibility
 from models.reading_history import ReadingHistory
+
+_file_counter = itertools.count(1)
 
 
 # ---------------------------------------------------------------------------
@@ -388,3 +388,37 @@ async def test_get_pagination(
     assert r2.status_code == 200
     d2 = r2.json()
     assert len(d2["history"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_post_nonexistent_chapter_id_returns_422(
+    client: TestClient,
+    async_session_factory: async_sessionmaker[AsyncSession],
+    session_store: dict,
+) -> None:
+    user = await _create_user(async_session_factory, "user10@example.com")
+    file_ = await _create_file(async_session_factory, user.id)
+    _login(client, session_store, user)
+
+    response = client.post(f"/history/{file_.id}", json={"position_seconds": 5.0, "chapter_id": 99999})
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_post_cross_file_chapter_id_returns_422(
+    client: TestClient,
+    async_session_factory: async_sessionmaker[AsyncSession],
+    session_store: dict,
+) -> None:
+    user = await _create_user(async_session_factory, "user11@example.com")
+    file_a = await _create_file(async_session_factory, user.id)
+    file_b = await _create_file(async_session_factory, user.id)
+    chapter_b = await _create_chapter(async_session_factory, file_b.id)
+    _login(client, session_store, user)
+
+    # chapter_b belongs to file_b but we're posting to file_a's history
+    response = client.post(
+        f"/history/{file_a.id}",
+        json={"position_seconds": 5.0, "chapter_id": chapter_b.id},
+    )
+    assert response.status_code == 422

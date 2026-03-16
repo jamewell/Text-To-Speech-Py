@@ -1,13 +1,14 @@
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette import status
 from starlette.requests import Request
 
 from core.database import get_db_session
 from core.session import get_session_token, sessions
-from models import User
+from models import User, Chapter
 from schemas.reading_history import ReadingHistoryUpdate, ReadingHistoryOut, HistoryListResponse
 from services.auth import AuthService
 from services.files import FileService
@@ -51,6 +52,15 @@ async def upsert_history(
     file_record = await FileService.get_file_by_id(db, file_id, current_user.id)
     if not file_record:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+
+    if body.chapter_id is not None:
+        result = await db.execute(select(Chapter).where(Chapter.id == body.chapter_id))
+        chapter = result.scalar_one_or_none()
+        if not chapter or chapter.file_id != file_id:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="chapter_id does not belong to this file",
+            )
 
     record = await HistoryService.upsert_progress(
         db=db,

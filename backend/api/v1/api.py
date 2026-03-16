@@ -17,17 +17,14 @@ api_router.include_router(
 api_router.include_router(
     files.router,
     prefix="/files",
-    tags=["files"]
 )
 
 api_router.include_router(
     chapters.router,
     prefix="/chapters",
-    tags=["chapters"]
 )
 
 api_router.include_router(
     history.router,
     prefix="/history",
-    tags=["history"]
 )
