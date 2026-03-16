@@ -76,6 +76,7 @@ class File(Base):
 
     user = relationship("User", back_populates="files")
     chapters = relationship("Chapter", back_populates="file", cascade="all, delete-orphan")
+    reading_history = relationship("ReadingHistory", back_populates="file", cascade="all, delete-orphan")
 
     def __repr__(self):
         return (

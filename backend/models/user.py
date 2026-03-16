@@ -20,6 +20,7 @@ class User(Base):
     is_active = Column(Boolean, default=True, nullable=False)
 
     files = relationship("File", back_populates="user", cascade="all, delete-orphan")
+    reading_history = relationship("ReadingHistory", back_populates="user", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<User(id={self.id}, email={self.email}, is_active={self.is_active}"
