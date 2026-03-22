@@ -2,12 +2,14 @@
 from .user import User
 from .file import File
 from .chapter import Chapter
+from .reading_history import ReadingHistory
 
 
 MODEL_REGISTRY = {
     'user': User,
     'file': File,
     'chapter': Chapter,
+    'reading_history': ReadingHistory,
 }
 
 
@@ -15,6 +17,7 @@ __all__ = [
     "User",
     "File",
     "Chapter",
+    "ReadingHistory",
     "MODEL_REGISTRY",
 ]
 
