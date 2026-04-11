@@ -242,6 +242,12 @@
 						<p class="mt-1 text-sm text-green-700">
 							Uploaded: {new Date(uploadedFile.upload_date).toLocaleString()}
 						</p>
+						<a
+							href={`/files/${uploadedFile.id}`}
+							class="mt-3 inline-flex rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-green-700"
+						>
+							Open file page
+						</a>
 					{/if}
 				</div>
 			{/if}

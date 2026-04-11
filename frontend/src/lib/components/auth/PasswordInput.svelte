@@ -1,10 +1,12 @@
 <script lang="ts">
+	import type { HTMLInputAttributes } from 'svelte/elements';
+
 	export let id: string;
 	export let label: string;
 	export let value: string = '';
 	export let error: string = '';
 	export let placeholder: string = 'Enter password';
-	export let autocomplete: string = 'current-password';
+	export let autocomplete: HTMLInputAttributes['autocomplete'] = 'current-password';
 	export let disabled: boolean = false;
 	export let showStrengthIndicator: boolean = false;
 	export let showRequirements: boolean = false;

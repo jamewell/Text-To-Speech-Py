@@ -1,6 +1,12 @@
 import { config } from './config';
 import { z } from 'zod';
-import type { FileUploadResponse } from './schemas/api';
+import type {
+	ChapterAudioResponse,
+	FileDetail,
+	FileUploadResponse,
+	HistoryListResponse,
+	ReadingHistory
+} from './schemas/api';
 
 const HTTP_STATUS_NO_CONTENT = 204;
 const HTTP_STATUS_NETWORK_ERROR = 0;
@@ -381,6 +387,61 @@ export class ApiClient {
 
 			xhr.send(formData);
 		});
+	}
+
+	async getFile(fileId: number): Promise<FileDetail> {
+		const { FileSchema } = await import('./schemas/api');
+
+		return this.request(
+			`/files/${fileId}`,
+			{
+				method: 'GET'
+			},
+			FileSchema
+		);
+	}
+
+	async getChapterAudio(chapterId: number): Promise<ChapterAudioResponse> {
+		const { ChapterAudioResponseSchema } = await import('./schemas/api');
+
+		return this.request(
+			`/chapters/${chapterId}/audio`,
+			{
+				method: 'GET'
+			},
+			ChapterAudioResponseSchema
+		);
+	}
+
+	async getHistory(page: number = 1, pageSize: number = 100): Promise<HistoryListResponse> {
+		const { HistoryListResponseSchema } = await import('./schemas/api');
+
+		return this.request(
+			`/history/?page=${page}&page_size=${pageSize}`,
+			{
+				method: 'GET'
+			},
+			HistoryListResponseSchema
+		);
+	}
+
+	async upsertHistory(
+		fileId: number,
+		body: {
+			chapter_id: number | null;
+			position_seconds: number;
+		}
+	): Promise<ReadingHistory> {
+		const { ReadingHistorySchema } = await import('./schemas/api');
+
+		return this.request(
+			`/history/${fileId}`,
+			{
+				method: 'POST',
+				body: JSON.stringify(body)
+			},
+			ReadingHistorySchema
+		);
 	}
 }
 
