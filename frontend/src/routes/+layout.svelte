@@ -35,7 +35,7 @@
 	});
 </script>
 
-<div class="min-h-screen bg-gray-50">
+<div class="flex min-h-screen flex-col bg-gray-50">
 	<!-- Offline banner -->
 	{#if !$isOnline}
 		<div class="bg-yellow-500 px-4 py-2 text-center text-sm font-medium text-white">
@@ -162,7 +162,7 @@
 	<!-- Footer -->
 	<footer class="mt-auto border-t border-gray-200 bg-white">
 		<div class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-			<div class="justify between flex items-center text-sm text-gray-600">
+			<div class="flex items-center justify-between text-sm text-gray-600">
 				<p>&copy; 2025 TTS Studio.</p>
 				<div class="flex space-x-4">
 					<a href="#" class="hover:text-gray-900">Privacy</a>
